@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BULLET-TIME TYPIST</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --neon-cyan: #00f5ff;
+    --neon-pink: #ff006e;
+    --neon-yellow: #ffff00;
+    --neon-green: #39ff14;
+    --neon-purple: #bf00ff;
+    --bg: #020408;
+    --grid: rgba(0, 245, 255, 0.04);
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--neon-cyan);
+    font-family: 'Share Tech Mono', monospace;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: none;
+  }
+
+  #gameCanvas {
+    display: block;
+    position: absolute;
+    top: 0; left: 0;
+  }
+
+  /* Scanline overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  /* CRT vignette */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.85) 100%);
+    pointer-events: none;
+    z-index: 99;
+  }
+
+  #ui {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 20px 30px;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .stat-block {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .stat-label {
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: rgba(0,245,255,0.5);
+    text-transform: uppercase;
+  }
+
+  .stat-value {
+    font-family: 'Orbitron', monospace;
+    font-size: 28px;
+    font-weight: 900;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 10px var(--neon-cyan), 0 0 30px var(--neon-cyan);
+    line-height: 1;
+  }
+
+  #wpmDisplay .stat-value { color: var(--neon-green); text-shadow: 0 0 10px var(--neon-green), 0 0 30px var(--neon-green); }
+  #comboDisplay .stat-value { color: var(--neon-pink); text-shadow: 0 0 10px var(--neon-pink), 0 0 30px var(--neon-pink); }
+
+  #healthBar {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  #healthLabel {
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    letter-spacing: 4px;
+    color: rgba(255,0,110,0.7);
+  }
+
+  #healthTrack {
+    width: 300px;
+    height: 6px;
+    background: rgba(255,0,110,0.15);
+    border: 1px solid rgba(255,0,110,0.3);
+    position: relative;
+    overflow: hidden;
+  }
+
+  #healthFill {
+    height: 100%;
+    width: 100%;
+    background: var(--neon-pink);
+    box-shadow: 0 0 10px var(--neon-pink);
+    transition: width 0.3s ease;
+  }
+
+  #typeDisplay {
+    position: absolute;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Orbitron', monospace;
+    font-size: 20px;
+    letter-spacing: 6px;
+    color: var(--neon-yellow);
+    text-shadow: 0 0 8px var(--neon-yellow);
+    z-index: 10;
+    pointer-events: none;
+    min-height: 30px;
+    text-align: center;
+  }
+
+  /* OVERLAY SCREENS */
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    background: rgba(2,4,8,0.9);
+  }
+
+  .overlay.hidden { display: none; }
+
+  .glitch-title {
+    font-family: 'Orbitron', monospace;
+    font-weight: 900;
+    font-size: clamp(36px, 6vw, 72px);
+    color: var(--neon-cyan);
+    text-shadow: 0 0 20px var(--neon-cyan), 0 0 60px var(--neon-cyan);
+    letter-spacing: 8px;
+    text-align: center;
+    position: relative;
+    animation: glitch 3s infinite;
+  }
+
+  @keyframes glitch {
+    0%, 90%, 100% { text-shadow: 0 0 20px var(--neon-cyan), 0 0 60px var(--neon-cyan); transform: none; }
+    91% { text-shadow: -3px 0 var(--neon-pink), 3px 0 var(--neon-green); transform: translateX(2px); }
+    92% { text-shadow: 3px 0 var(--neon-pink), -3px 0 var(--neon-green); transform: translateX(-2px); }
+    93% { text-shadow: 0 0 20px var(--neon-cyan), 0 0 60px var(--neon-cyan); transform: none; }
+  }
+
+  .sub-title {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: clamp(12px, 1.5vw, 16px);
+    color: rgba(0,245,255,0.5);
+    letter-spacing: 4px;
+    margin: 10px 0 50px;
+    text-align: center;
+  }
+
+  .cyber-btn {
+    font-family: 'Orbitron', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    color: var(--bg);
+    background: var(--neon-cyan);
+    border: none;
+    padding: 16px 48px;
+    cursor: pointer;
+    clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+    transition: all 0.2s;
+    box-shadow: 0 0 20px var(--neon-cyan);
+    text-transform: uppercase;
+  }
+
+  .cyber-btn:hover {
+    background: var(--neon-pink);
+    box-shadow: 0 0 30px var(--neon-pink);
+    transform: scale(1.05);
+  }
+
+  .instructions {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    color: rgba(0,245,255,0.6);
+    text-align: center;
+    line-height: 2;
+    margin-bottom: 40px;
+    max-width: 480px;
+    border: 1px solid rgba(0,245,255,0.2);
+    padding: 20px 30px;
+    position: relative;
+  }
+
+  .instructions::before {
+    content: 'HOW TO PLAY';
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg);
+    padding: 0 10px;
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--neon-cyan);
+  }
+
+  #gameOverScreen .glitch-title { color: var(--neon-pink); text-shadow: 0 0 20px var(--neon-pink), 0 0 60px var(--neon-pink); }
+
+  .final-stats {
+    display: flex;
+    gap: 40px;
+    margin: 30px 0;
+  }
+
+  .final-stat {
+    text-align: center;
+  }
+
+  .final-stat .stat-label { font-family: 'Orbitron', monospace; font-size: 10px; letter-spacing: 3px; color: rgba(0,245,255,0.5); margin-bottom: 6px; }
+  .final-stat .stat-value { font-family: 'Orbitron', monospace; font-size: 32px; font-weight: 900; color: var(--neon-cyan); text-shadow: 0 0 10px var(--neon-cyan); }
+
+  /* Jam indicator */
+  #jamAlert {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Orbitron', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 6px;
+    color: var(--neon-pink);
+    text-shadow: 0 0 20px var(--neon-pink);
+    z-index: 20;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+
+  #jamAlert.visible { opacity: 1; }
+
+  .difficulty-selector {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 30px;
+  }
+
+  .diff-btn {
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    padding: 8px 20px;
+    background: transparent;
+    border: 1px solid rgba(0,245,255,0.3);
+    color: rgba(0,245,255,0.5);
+    cursor: pointer;
+    transition: all 0.2s;
+    clip-path: polygon(6px 0%, 100% 0%, calc(100% - 6px) 100%, 0% 100%);
+  }
+
+  .diff-btn:hover, .diff-btn.active {
+    background: rgba(0,245,255,0.15);
+    border-color: var(--neon-cyan);
+    color: var(--neon-cyan);
+    text-shadow: 0 0 8px var(--neon-cyan);
+  }
+
+  .diff-btn.active { box-shadow: inset 0 0 10px rgba(0,245,255,0.1); }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<!-- UI HUD -->
+<div id="ui">
+  <div class="stat-block" id="scoreDisplay">
+    <div class="stat-label">Score</div>
+    <div class="stat-value" id="scoreVal">0</div>
+  </div>
+  <div class="stat-block" id="wpmDisplay" style="text-align:center;">
+    <div class="stat-label">WPM</div>
+    <div class="stat-value" id="wpmVal">0</div>
+  </div>
+  <div class="stat-block" id="comboDisplay" style="text-align:right;">
+    <div class="stat-label">Combo</div>
+    <div class="stat-value" id="comboVal">x1</div>
+  </div>
+</div>
+
+<div id="typeDisplay"></div>
+<div id="jamAlert">⚡ JAMMED ⚡</div>
+
+<div id="healthBar">
+  <div id="healthLabel">SHIELD INTEGRITY</div>
+  <div id="healthTrack"><div id="healthFill"></div></div>
+</div>
+
+<!-- Start Screen -->
+<div class="overlay" id="startScreen">
+  <div class="glitch-title">BULLET-TIME<br>TYPIST</div>
+  <div class="sub-title">// CYBERPUNK TYPING SURVIVAL //</div>
+  <div class="instructions">
+    Type the words above enemies to destroy them<br>
+    First letter <span style="color:var(--neon-cyan)">LOCKS</span> onto target<br>
+    Typos <span style="color:var(--neon-pink)">JAM</span> your keyboard for 500ms<br>
+    Don't let them reach your <span style="color:var(--neon-yellow)">CORE</span>
+  </div>
+  <div class="difficulty-selector">
+    <button class="diff-btn active" data-diff="easy">EASY</button>
+    <button class="diff-btn" data-diff="normal">NORMAL</button>
+    <button class="diff-btn" data-diff="hard">HARD</button>
+  </div>
+  <button class="cyber-btn" id="startBtn">INITIALIZE</button>
+</div>
+
+<!-- Game Over Screen -->
+<div class="overlay hidden" id="gameOverScreen">
+  <div class="glitch-title" style="color:var(--neon-pink);text-shadow:0 0 20px var(--neon-pink),0 0 60px var(--neon-pink);">SYSTEM<br>FAILURE</div>
+  <div class="sub-title">// NEURAL LINK SEVERED //</div>
+  <div class="final-stats">
+    <div class="final-stat">
+      <div class="stat-label">Final Score</div>
+      <div class="stat-value" id="finalScore">0</div>
+    </div>
+    <div class="final-stat">
+      <div class="stat-label">Words Typed</div>
+      <div class="stat-value" id="finalWords">0</div>
+    </div>
+    <div class="final-stat">
+      <div class="stat-label">Peak WPM</div>
+      <div class="stat-value" id="finalWpm">0</div>
+    </div>
+    <div class="final-stat">
+      <div class="stat-label">Peak Combo</div>
+      <div class="stat-value" id="finalCombo">0</div>
+    </div>
+  </div>
+  <button class="cyber-btn" id="restartBtn">REBOOT</button>
+</div>
+
+<script>
+// ─── CONSTANTS & CONFIG ────────────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const WORD_BANK = [
+  'cyber','pulse','glitch','neon','hack','sync','data','flux','void','core',
+  'grid','node','ping','byte','null','root','exec','kill','fork','boot',
+  'drain','surge','crash','token','proxy','virus','clone','ghost','shift','burst',
+  'trace','nexus','chaos','rift','loop','spawn','drift','blade','echo','zero',
+  'matrix','shadow','cipher','portal','vector','static','neural','binary','chrome','system',
+  'decrypt','override','cascade','protocol','terminal','firewall','synthetic','mainframe','uplink','downlink',
+  'archive','corrupt','latency','payload','exploit','defense','sentinel','phantom','stealth','quantum'
+];
+
+const DIFFICULTIES = {
+  easy:   { spawnInterval: 3500, enemySpeed: 0.35, wordLenMax: 5, maxEnemies: 6 },
+  normal: { spawnInterval: 2500, enemySpeed: 0.6,  wordLenMax: 7, maxEnemies: 9 },
+  hard:   { spawnInterval: 1500, enemySpeed: 0.95, wordLenMax: 12, maxEnemies: 14 }
+};
+
+const SHAPES = ['triangle', 'square', 'hexagon', 'diamond'];
+const ENEMY_COLORS = [
+  { stroke: '#ff006e', glow: 'rgba(255,0,110,0.4)' },
+  { stroke: '#bf00ff', glow: 'rgba(191,0,255,0.4)' },
+  { stroke: '#ff4500', glow: 'rgba(255,69,0,0.4)' },
+  { stroke: '#00f5ff', glow: 'rgba(0,245,255,0.3)' },
+];
+
+// ─── STATE ─────────────────────────────────────────────────────────────────────
+let state = {};
+let animId;
+let difficulty = 'easy';
+let spawnTimer = 0;
+let lastTime = 0;
+let particles = [];
+let floatingTexts = [];
+let gridOffset = 0;
+let wpmBuffer = [];
+let peakWpm = 0;
+let peakCombo = 0;
+
+// ─── DOM REFS ──────────────────────────────────────────────────────────────────
+const scoreVal    = document.getElementById('scoreVal');
+const wpmVal      = document.getElementById('wpmVal');
+const comboVal    = document.getElementById('comboVal');
+const typeDisplay = document.getElementById('typeDisplay');
+const healthFill  = document.getElementById('healthFill');
+const jamAlert    = document.getElementById('jamAlert');
+const startScreen = document.getElementById('startScreen');
+const gameOverScreen = document.getElementById('gameOverScreen');
+const finalScore  = document.getElementById('finalScore');
+const finalWords  = document.getElementById('finalWords');
+const finalWpm    = document.getElementById('finalWpm');
+const finalCombo  = document.getElementById('finalCombo');
+
+// ─── RESIZE ────────────────────────────────────────────────────────────────────
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ─── UTILITY ───────────────────────────────────────────────────────────────────
+function rand(min, max) { return Math.random() * (max - min) + min; }
+function randInt(min, max) { return Math.floor(rand(min, max + 1)); }
+function randItem(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+function getWordForDiff() {
+  const cfg = DIFFICULTIES[difficulty];
+  const pool = WORD_BANK.filter(w => w.length <= cfg.wordLenMax);
+  return randItem(pool);
+}
+
+function spawnEdgePos() {
+  const side = randInt(0, 3);
+  const W = canvas.width, H = canvas.height;
+  const pad = 40;
+  switch(side) {
+    case 0: return { x: rand(0, W), y: -pad };
+    case 1: return { x: W + pad,   y: rand(0, H) };
+    case 2: return { x: rand(0, W), y: H + pad };
+    case 3: return { x: -pad,       y: rand(0, H) };
+  }
+}
+
+// ─── INIT / RESET ──────────────────────────────────────────────────────────────
+function initState() {
+  state = {
+    playing: false,
+    player: { x: canvas.width / 2, y: canvas.height / 2, r: 22, hp: 100 },
+    enemies: [],
+    targetId: null,
+    typedProgress: 0,
+    score: 0,
+    combo: 1,
+    wordsTyped: 0,
+    jammed: false,
+    jamEnd: 0,
+    currentInput: '',
+  };
+  particles = [];
+  floatingTexts = [];
+  wpmBuffer = [];
+  peakWpm = 0;
+  peakCombo = 0;
+  spawnTimer = 0;
+}
+
+// ─── ENEMY ─────────────────────────────────────────────────────────────────────
+let enemyIdCounter = 0;
+function spawnEnemy() {
+  const cfg = DIFFICULTIES[difficulty];
+  if (state.enemies.length >= cfg.maxEnemies) return;
+
+  const pos = spawnEdgePos();
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const angle = Math.atan2(cy - pos.y, cx - pos.x);
+  const colorSet = randItem(ENEMY_COLORS);
+  const word = getWordForDiff();
+
+  state.enemies.push({
+    id: enemyIdCounter++,
+    x: pos.x, y: pos.y,
+    vx: Math.cos(angle) * cfg.enemySpeed,
+    vy: Math.sin(angle) * cfg.enemySpeed,
+    shape: randItem(SHAPES),
+    color: colorSet,
+    word,
+    size: randInt(18, 26),
+    rot: 0,
+    rotSpeed: rand(-0.02, 0.02),
+    pulse: rand(0, Math.PI * 2),
+  });
+}
+
+// ─── PARTICLES ─────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, color, count = 12) {
+  for (let i = 0; i < count; i++) {
+    const angle = rand(0, Math.PI * 2);
+    const speed = rand(1.5, 5);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1,
+      decay: rand(0.02, 0.05),
+      size: rand(2, 5),
+      color,
+    });
+  }
+}
+
+function spawnFloatingText(x, y, text, color) {
+  floatingTexts.push({ x, y, text, color, life: 1, decay: 0.025, vy: -1.5 });
+}
+
+// ─── DRAWING ───────────────────────────────────────────────────────────────────
+function drawGrid() {
+  const W = canvas.width, H = canvas.height;
+  gridOffset = (gridOffset + 0.3) % 60;
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0,245,255,0.035)';
+  ctx.lineWidth = 1;
+
+  for (let x = gridOffset; x < W; x += 60) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = gridOffset; y < H; y += 60) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawPlayer() {
+  const { x, y, r } = state.player;
+  const t = Date.now() / 1000;
+
+  // Outer rings
+  for (let i = 3; i > 0; i--) {
+    ctx.save();
+    ctx.strokeStyle = `rgba(0,245,255,${0.08 * i})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(x, y, r + i * 12 + Math.sin(t + i) * 3, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Core glow
+  const grad = ctx.createRadialGradient(x, y, 0, x, y, r * 2);
+  grad.addColorStop(0, 'rgba(0,245,255,0.3)');
+  grad.addColorStop(1, 'rgba(0,245,255,0)');
+  ctx.beginPath();
+  ctx.arc(x, y, r * 2, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Core body
+  ctx.save();
+  ctx.shadowColor = '#00f5ff';
+  ctx.shadowBlur = 20;
+  ctx.strokeStyle = '#00f5ff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Inner cross
+  ctx.strokeStyle = 'rgba(0,245,255,0.5)';
+  ctx.lineWidth = 1;
+  const crossSize = r * 0.5;
+  ctx.beginPath();
+  ctx.moveTo(x - crossSize, y); ctx.lineTo(x + crossSize, y);
+  ctx.moveTo(x, y - crossSize); ctx.lineTo(x, y + crossSize);
+  ctx.stroke();
+  ctx.restore();
+
+  // HP flash
+  if (state.player.hp < 40) {
+    const alpha = 0.3 + 0.3 * Math.sin(t * 8);
+    ctx.save();
+    ctx.strokeStyle = `rgba(255,0,110,${alpha})`;
+    ctx.lineWidth = 3;
+    ctx.shadowColor = '#ff006e';
+    ctx.shadowBlur = 30;
+    ctx.beginPath();
+    ctx.arc(x, y, r + 4, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawShape(x, y, size, shape, rot) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.beginPath();
+
+  if (shape === 'triangle') {
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 - Math.PI / 2;
+      i === 0 ? ctx.moveTo(Math.cos(a)*size, Math.sin(a)*size)
+              : ctx.lineTo(Math.cos(a)*size, Math.sin(a)*size);
+    }
+    ctx.closePath();
+  } else if (shape === 'square') {
+    ctx.rect(-size, -size, size*2, size*2);
+  } else if (shape === 'hexagon') {
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      i === 0 ? ctx.moveTo(Math.cos(a)*size, Math.sin(a)*size)
+              : ctx.lineTo(Math.cos(a)*size, Math.sin(a)*size);
+    }
+    ctx.closePath();
+  } else if (shape === 'diamond') {
+    ctx.moveTo(0, -size * 1.3);
+    ctx.lineTo(size * 0.9, 0);
+    ctx.lineTo(0, size * 1.3);
+    ctx.lineTo(-size * 0.9, 0);
+    ctx.closePath();
+  }
+
+  ctx.restore();
+}
+
+function drawEnemies() {
+  const t = Date.now() / 1000;
+
+  state.enemies.forEach(e => {
+    const isTarget = e.id === state.targetId;
+    const pulse = 0.7 + 0.3 * Math.sin(t * 3 + e.pulse);
+    const glowIntensity = isTarget ? 30 : 12;
+
+    // Shadow/glow
+    ctx.save();
+    ctx.shadowColor = e.color.stroke;
+    ctx.shadowBlur = glowIntensity * pulse;
+    ctx.strokeStyle = e.color.stroke;
+    ctx.lineWidth = isTarget ? 2.5 : 1.5;
+    ctx.fillStyle = e.color.glow;
+
+    drawShape(e.x, e.y, e.size, e.shape, e.rot);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    // Inner fill glow for target
+    if (isTarget) {
+      ctx.save();
+      ctx.globalAlpha = 0.15 * pulse;
+      ctx.fillStyle = e.color.stroke;
+      drawShape(e.x, e.y, e.size, e.shape, e.rot);
+      ctx.fill();
+      ctx.restore();
+
+      // Target lock bracket
+      ctx.save();
+      ctx.strokeStyle = '#ffff00';
+      ctx.lineWidth = 1.5;
+      ctx.shadowColor = '#ffff00';
+      ctx.shadowBlur = 10;
+      const bs = e.size + 10;
+      const corner = 8;
+      // TL
+      ctx.beginPath(); ctx.moveTo(e.x-bs, e.y-bs+corner); ctx.lineTo(e.x-bs, e.y-bs); ctx.lineTo(e.x-bs+corner, e.y-bs); ctx.stroke();
+      // TR
+      ctx.beginPath(); ctx.moveTo(e.x+bs-corner, e.y-bs); ctx.lineTo(e.x+bs, e.y-bs); ctx.lineTo(e.x+bs, e.y-bs+corner); ctx.stroke();
+      // BL
+      ctx.beginPath(); ctx.moveTo(e.x-bs, e.y+bs-corner); ctx.lineTo(e.x-bs, e.y+bs); ctx.lineTo(e.x-bs+corner, e.y+bs); ctx.stroke();
+      // BR
+      ctx.beginPath(); ctx.moveTo(e.x+bs-corner, e.y+bs); ctx.lineTo(e.x+bs, e.y+bs); ctx.lineTo(e.x+bs, e.y+bs-corner); ctx.stroke();
+      ctx.restore();
+    }
+
+    // Word label
+    drawWordLabel(e);
+
+    // Threat line if targeting
+    if (isTarget) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,0,0.12)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 8]);
+      ctx.beginPath();
+      ctx.moveTo(state.player.x, state.player.y);
+      ctx.lineTo(e.x, e.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+  });
+}
+
+function drawWordLabel(e) {
+  const isTarget = e.id === state.targetId;
+  const word = e.word;
+  const progress = isTarget ? state.typedProgress : 0;
+
+  ctx.save();
+  ctx.font = `bold 13px 'Share Tech Mono', monospace`;
+  const padding = 8;
+  const textW = ctx.measureText(word).width;
+  const bw = textW + padding * 2;
+  const bh = 22;
+  const bx = e.x - bw / 2;
+  const by = e.y - e.size - bh - 10;
+
+  // Background
+  ctx.fillStyle = 'rgba(2,4,8,0.85)';
+  ctx.strokeStyle = isTarget ? '#ffff00' : e.color.stroke;
+  ctx.lineWidth = 1;
+  ctx.shadowColor = isTarget ? '#ffff00' : e.color.stroke;
+  ctx.shadowBlur = isTarget ? 8 : 4;
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.strokeRect(bx, by, bw, bh);
+
+  // Typed portion
+  if (progress > 0) {
+    const typedText = word.slice(0, progress);
+    const typedW = ctx.measureText(typedText).width;
+    ctx.fillStyle = 'rgba(57,255,20,0.2)';
+    ctx.fillRect(bx, by, typedW + padding, bh);
+  }
+
+  // Letters
+  let tx = bx + padding;
+  const ty = by + bh / 2 + 5;
+
+  for (let i = 0; i < word.length; i++) {
+    if (isTarget && i < progress) {
+      ctx.fillStyle = '#39ff14';
+      ctx.shadowColor = '#39ff14';
+      ctx.shadowBlur = 8;
+    } else {
+      ctx.fillStyle = isTarget ? '#ffff00' : e.color.stroke;
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+    }
+    ctx.fillText(word[i], tx, ty);
+    tx += ctx.measureText(word[i]).width;
+  }
+
+  ctx.restore();
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 6;
+    ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+    ctx.restore();
+  });
+}
+
+function drawFloatingTexts() {
+  floatingTexts.forEach(ft => {
+    ctx.save();
+    ctx.globalAlpha = ft.life;
+    ctx.fillStyle = ft.color;
+    ctx.shadowColor = ft.color;
+    ctx.shadowBlur = 8;
+    ctx.font = `bold 16px 'Orbitron', monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(ft.text, ft.x, ft.y);
+    ctx.restore();
+  });
+}
+
+// ─── UPDATE ────────────────────────────────────────────────────────────────────
+function update(dt) {
+  if (!state.playing) return;
+
+  // Spawn
+  spawnTimer -= dt;
+  if (spawnTimer <= 0) {
+    spawnEnemy();
+    spawnTimer = DIFFICULTIES[difficulty].spawnInterval;
+    // Gradually accelerate
+    spawnTimer = Math.max(800, spawnTimer - state.score * 0.3);
+  }
+
+  // Update enemies
+  state.enemies.forEach(e => {
+    e.x += e.vx;
+    e.y += e.vy;
+    e.rot += e.rotSpeed;
+
+    // Collision
+    const dist = Math.hypot(e.x - state.player.x, e.y - state.player.y);
+    if (dist < state.player.r + e.size * 0.7) {
+      onPlayerHit(e);
+    }
+  });
+
+  // Jam
+  if (state.jammed && Date.now() > state.jamEnd) {
+    state.jammed = false;
+    jamAlert.classList.remove('visible');
+  }
+
+  // Particles
+  particles.forEach(p => {
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 0.94; p.vy *= 0.94;
+    p.life -= p.decay;
+  });
+  particles = particles.filter(p => p.life > 0);
+
+  floatingTexts.forEach(ft => {
+    ft.y += ft.vy;
+    ft.life -= ft.decay;
+  });
+  floatingTexts = floatingTexts.filter(ft => ft.life > 0);
+
+  // WPM calculation
+  const now = Date.now();
+  wpmBuffer = wpmBuffer.filter(t => now - t < 60000);
+  const wpm = Math.round(wpmBuffer.length * 12); // chars/min / 5
+  if (wpm > peakWpm) peakWpm = wpm;
+  wpmVal.textContent = wpm;
+
+  // Update UI
+  scoreVal.textContent = state.score;
+  comboVal.textContent = `x${state.combo}`;
+  healthFill.style.width = state.player.hp + '%';
+  if (state.player.hp <= 0) endGame();
+
+  // Type display
+  if (state.targetId !== null) {
+    const target = state.enemies.find(e => e.id === state.targetId);
+    if (target) {
+      const typed = target.word.slice(0, state.typedProgress);
+      const rest  = target.word.slice(state.typedProgress);
+      typeDisplay.innerHTML = `<span style="color:#39ff14;text-shadow:0 0 8px #39ff14">${typed}</span><span style="color:rgba(255,255,255,0.4)">${rest}</span>`;
+    }
+  } else {
+    typeDisplay.textContent = '';
+  }
+}
+
+function onPlayerHit(enemy) {
+  state.player.hp -= 25;
+  spawnParticles(state.player.x, state.player.y, '#ff006e', 20);
+  spawnFloatingText(state.player.x, state.player.y - 30, '-25 HP', '#ff006e');
+  // Remove enemy and clear target
+  state.enemies = state.enemies.filter(e => e.id !== enemy.id);
+  if (state.targetId === enemy.id) {
+    state.targetId = null;
+    state.typedProgress = 0;
+  }
+  state.combo = 1;
+}
+
+// ─── RENDER ────────────────────────────────────────────────────────────────────
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Background
+  ctx.fillStyle = '#020408';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  drawGrid();
+
+  if (!state.playing) return;
+
+  drawEnemies();
+  drawPlayer();
+  drawParticles();
+  drawFloatingTexts();
+}
+
+// ─── GAME LOOP ─────────────────────────────────────────────────────────────────
+function loop(ts) {
+  const dt = ts - lastTime;
+  lastTime = ts;
+  update(dt);
+  render();
+  animId = requestAnimationFrame(loop);
+}
+
+// ─── INPUT ─────────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (!state.playing) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key.length !== 1) return;
+  const ch = e.key.toLowerCase();
+  handleTyping(ch);
+});
+
+function handleTyping(ch) {
+  if (state.jammed) return;
+
+  // No target → try to lock
+  if (state.targetId === null) {
+    const match = state.enemies.find(e => e.word[0] === ch);
+    if (match) {
+      state.targetId = match.id;
+      state.typedProgress = 1;
+      wpmBuffer.push(Date.now());
+      recordChar(match, 1);
+    }
+    return;
+  }
+
+  // Has target
+  const target = state.enemies.find(e => e.id === state.targetId);
+  if (!target) { state.targetId = null; state.typedProgress = 0; return; }
+
+  const expected = target.word[state.typedProgress];
+  if (ch === expected) {
+    state.typedProgress++;
+    wpmBuffer.push(Date.now());
+    recordChar(target, state.typedProgress);
+
+    if (state.typedProgress >= target.word.length) {
+      destroyEnemy(target);
+    }
+  } else {
+    // TYPO → JAM
+    triggerJam();
+  }
+}
+
+function recordChar(enemy, progress) {
+  // Visual flash on the canvas
+}
+
+function triggerJam() {
+  state.jammed = true;
+  state.jamEnd = Date.now() + 500;
+  state.typedProgress = 0;
+  state.combo = Math.max(1, state.combo - 1);
+  jamAlert.classList.add('visible');
+  spawnFloatingText(state.player.x, state.player.y - 40, 'JAMMED!', '#ff006e');
+}
+
+function destroyEnemy(enemy) {
+  const points = enemy.word.length * 10 * state.combo;
+  state.score += points;
+  state.wordsTyped++;
+  state.combo = Math.min(state.combo + 1, 16);
+  if (state.combo > peakCombo) peakCombo = state.combo;
+
+  spawnParticles(enemy.x, enemy.y, enemy.color.stroke, 18);
+  spawnFloatingText(enemy.x, enemy.y - 30, `+${points}`, '#39ff14');
+
+  if (state.combo > 2) {
+    spawnFloatingText(enemy.x, enemy.y - 55, `x${state.combo} COMBO!`, '#ffff00');
+  }
+
+  state.enemies = state.enemies.filter(e => e.id !== enemy.id);
+  state.targetId = null;
+  state.typedProgress = 0;
+}
+
+// ─── GAME FLOW ─────────────────────────────────────────────────────────────────
+function startGame() {
+  initState();
+  state.playing = true;
+  spawnTimer = 500;
+  startScreen.classList.add('hidden');
+  gameOverScreen.classList.add('hidden');
+  lastTime = performance.now();
+  if (animId) cancelAnimationFrame(animId);
+  animId = requestAnimationFrame(loop);
+}
+
+function endGame() {
+  state.playing = false;
+  gameOverScreen.classList.remove('hidden');
+  finalScore.textContent = state.score;
+  finalWords.textContent = state.wordsTyped;
+  finalWpm.textContent = peakWpm;
+  finalCombo.textContent = peakCombo;
+}
+
+// ─── BUTTON EVENTS ─────────────────────────────────────────────────────────────
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('restartBtn').addEventListener('click', startGame);
+
+document.querySelectorAll('.diff-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    difficulty = btn.dataset.diff;
+  });
+});
+
+// ─── BOOT RENDER ───────────────────────────────────────────────────────────────
+(function bootRender() {
+  ctx.fillStyle = '#020408';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawGrid();
+  requestAnimationFrame(() => {
+    ctx.fillStyle = '#020408';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawGrid();
+  });
+})();
+
+// Continuous background grid animation even on start screen
+function bgLoop(ts) {
+  if (!state.playing) {
+    ctx.fillStyle = '#020408';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    gridOffset = (gridOffset + 0.3) % 60;
+    drawGrid();
+  }
+  if (!state.playing) requestAnimationFrame(bgLoop);
+}
+requestAnimationFrame(bgLoop);
+</script>
+</body>
+</html>
