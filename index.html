@@ -581,7 +581,7 @@
   <div class="instructions">
     Type any enemy's word and press <span style="color:var(--neon-cyan)">ENTER</span> to destroy it<br>
     <span style="color:var(--neon-green)">BACKSPACE</span> to correct mistakes<br>
-    Kill enemies to charge <span style="color:#bf00ff">BULLET TIME</span> press <span style="color:#bf00ff">TAB</span> to activate<br>
+    Kill enemies to charge <span style="color:#bf00ff">BULLET TIME</span> — press <span style="color:#bf00ff">TAB</span> to activate<br>
     Don't let them reach your <span style="color:var(--neon-yellow)">CORE</span>
   </div>
   <div class="difficulty-selector">
@@ -608,7 +608,6 @@
 <!-- Game Over Screen -->
 <div class="overlay hidden" id="gameOverScreen">
   <div class="glitch-title" style="color:var(--neon-pink);text-shadow:0 0 20px var(--neon-pink),0 0 60px var(--neon-pink);">SYSTEM<br>FAILURE</div>
-  <div class="sub-title">// NEURAL LINK SEVERED //</div>
   <div class="final-stats">
     <div class="final-stat">
       <div class="stat-label">Final Score</div>
@@ -655,10 +654,12 @@ const WORDS_MEDIUM = [
 ];
 
 const WORDS_BOSS = [
-  'mainframe','synthetic','protocol','terminal','firewall','override','downlink',
-  'sentinel','encrypted','bytecode','datastream','netrunner','cybervault','hyperlink',
-  'darkmatrix','nullpointer','kernelpanic','rootaccess','systembreach','ghostwire',
-  'megacorpnet','neuralspike','virusprotocol','cipherbreak','quantumrift'
+  'mainframeaccess','syntheticoverride','protocolbreach','terminalfailure','firewallcollapse',
+  'nullpointerexception','kernelpanicstate','rootaccessgranted','systembreachdetected','ghostwireprotocol',
+  'megacorpnetwork','neuralspikesurge','virusprotocolx','cipherbreakdown','quantumriftopen',
+  'darkmatrixinfect','cybervaultcrack','netrunnerdetected','datastreampurge','hyperlinkexploit',
+  'encryptionbroken','bytecodeinjected','sentineloverride','downlinkjammed','uplinkcorrupted',
+  'shadowprotocolx','phantomkernelhack','archivewipeout','cascadefailuremode','exploitpayloadx'
 ];
 
 const DIFFICULTIES = {
@@ -763,6 +764,7 @@ function initState() {
     killsSinceLastBoss: 0,
     bossAlive: false,
     bossPortalPending: false,
+    bossesDefeated: 0,
   };
   particles = [];
   floatingTexts = [];
@@ -805,6 +807,8 @@ function buildEnemy(pos, word, tier) {
     isBoss: tier === 'boss',
     spawnProgress: 0,
     spawnDuration: tier === 'boss' ? 800 : 500,
+    hp: tier === 'boss' ? Math.min(4, 1 + Math.floor((state.bossesDefeated || 0))) : 1,
+    maxHp: tier === 'boss' ? Math.min(4, 1 + Math.floor((state.bossesDefeated || 0))) : 1,
   };
 }
 
@@ -813,7 +817,11 @@ let enemyIdCounter = 0;
 function spawnEnemy() {
   const cfg = DIFFICULTIES[difficulty];
   const nonBossCount = state.enemies.filter(e => !e.isBoss).length;
-  if (nonBossCount >= cfg.maxEnemies) return;
+  // On easy and normal, halve the max enemies while a boss is alive
+  const effectiveMax = (state.bossAlive && difficulty !== 'hard')
+    ? Math.max(1, Math.floor(cfg.maxEnemies / 2))
+    : cfg.maxEnemies;
+  if (nonBossCount >= effectiveMax) return;
   const { word, tier } = pickWordAndTier();
   const pos = spawnRingPos();
   state.enemies.push(buildEnemy(pos, word, tier));
@@ -1182,7 +1190,12 @@ function drawWordLabel(e) {
   const bw = textW + padding * 2;
   const bh = isBoss ? 26 : 22;
   const bx = e.x - bw / 2;
-  const by = e.y - e.size - bh - (isBoss ? 16 : 10);
+
+  // If enemy is above the core, show label below the enemy to avoid top-of-screen clipping
+  const aboveCore = e.y < (state.player ? state.player.y : canvas.height / 2);
+  const by = aboveCore
+    ? e.y + e.size + (isBoss ? 16 : 10)
+    : e.y - e.size - bh - (isBoss ? 16 : 10);
   ctx.fillStyle = isBoss ? 'rgba(40,8,0,0.92)' : 'rgba(2,4,8,0.85)';
   const baseColor  = isBoss ? '#ff6600' : (isPrefix ? '#ffff00' : e.color.stroke);
   ctx.strokeStyle  = baseColor;
@@ -1195,11 +1208,12 @@ function drawWordLabel(e) {
     ctx.font = `bold 9px 'Orbitron', monospace`;
     const labelW = ctx.measureText('⚠ BOSS ⚠').width + 8;
     ctx.fillStyle = 'rgba(255,60,0,0.85)';
-    ctx.fillRect(e.x - labelW/2, by - 16, labelW, 14);
+    const tabY = aboveCore ? by + bh : by - 16;
+    ctx.fillRect(e.x - labelW/2, tabY, labelW, 14);
     ctx.fillStyle = '#ffcc00';
     ctx.shadowColor = '#ffcc00';
     ctx.shadowBlur = 6;
-    ctx.fillText('⚠ BOSS ⚠', e.x - labelW/2 + 4, by - 5);
+    ctx.fillText('⚠ BOSS ⚠', e.x - labelW/2 + 4, tabY + 11);
     ctx.font = `bold ${fontSize}px 'Share Tech Mono', monospace`;
   }
   if (matchLen > 0) {
@@ -1556,6 +1570,25 @@ function destroyEnemy(enemy) {
     state.btCharge = Math.min(1.0, state.btKills / state.btKillsNeeded);
   }
   if (enemy.isBoss) {
+    enemy.hp--;
+    if (enemy.hp > 0) {
+      // Boss survives — give it a new word and flash damage
+      const usedWord = enemy.word;
+      let newWord = randItem(WORDS_BOSS);
+      while (newWord === usedWord && WORDS_BOSS.length > 1) newWord = randItem(WORDS_BOSS);
+      enemy.word = newWord;
+      spawnParticles(enemy.x, enemy.y, '#ff6600', 20);
+      spawnParticles(enemy.x, enemy.y, '#ffcc00', 10);
+      spawnFloatingText(enemy.x, enemy.y - 40, `⚡ HIT! ${enemy.hp} / ${enemy.maxHp} HP`, '#ff4400');
+      // Charge bullet time a bit per hit
+      if (!state.btActive) {
+        state.btKills += 0.5;
+        state.btCharge = Math.min(1.0, state.btKills / state.btKillsNeeded);
+      }
+      return;
+    }
+    // Boss dead
+    state.bossesDefeated++;
     state.bossAlive = false;
     state.bossPortalPending = false;
     document.getElementById('bossTint').classList.remove('active');
